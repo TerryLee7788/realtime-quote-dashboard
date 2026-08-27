@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* 以 R G B 三個數字（非 hex）儲存，讓 Tailwind 的 bg-up/25 這類透明度修飾詞
+     可以用 rgb(var(--up) / <alpha-value>) 正確插入 alpha channel；
+     若存成 hex 字串，Tailwind 產生的 opacity 工具類別會直接失效變成全透明。 */
+  --bg: 0 0 0; /* #000000 */
+  --panel: 19 23 34; /* #131722 */
+  --border: 42 46 57; /* #2a2e39 */
+  --text: 209 212 220; /* #d1d4dc */
+  --muted: 120 123 134; /* #787b86 */
+  --up: 38 166 154; /* #26a69a */
+  --down: 239 83 80; /* #ef5350 */
+  --accent: 41 98 255; /* #2962ff */
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: rgb(var(--bg));
+  color: rgb(var(--text));
+}
+
+/* 細捲軸，貼近交易介面風格 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--border)) transparent;
+}
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgb(var(--border));
+  border-radius: 3px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 報價/委託簿/成交明細數字變動時的短暫閃爍回饋，模擬 TradingView 的 tick flash。 */
+@keyframes flash-up {
+  0% {
+    background-color: rgb(var(--up) / 0.35);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+@keyframes flash-down {
+  0% {
+    background-color: rgb(var(--down) / 0.35);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+.animate-flash-up {
+  animation: flash-up 500ms ease-out;
+}
+.animate-flash-down {
+  animation: flash-down 500ms ease-out;
+}
