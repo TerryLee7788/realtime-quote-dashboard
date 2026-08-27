@@ -25,7 +25,9 @@ function createPool(): Pool {
   return new Pool({
     connectionString,
     // 雲端 Postgres（Neon / Supabase / Railway…）都走 TLS，本機開發則關閉。
-    ssl: isLocal ? false : { rejectUnauthorized: false },
+    // rejectUnauthorized 保持 true：這些供應商都是公開受信任的 CA，關掉驗證會讓
+    // 連線暴露在 MITM 風險下，沒有理由關閉。
+    ssl: isLocal ? false : { rejectUnauthorized: true },
     max: 5,
   });
 }

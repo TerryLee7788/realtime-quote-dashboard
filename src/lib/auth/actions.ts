@@ -33,9 +33,13 @@ async function startSession(user: AuthedUser): Promise<void> {
   });
 }
 
-// 只允許站內相對路徑，避免 open redirect
+// 只允許站內相對路徑，避免 open redirect。
+// 光檢查開頭是 "/" 不夠：瀏覽器會把 "//evil.com" 或 "/\evil.com" 當成
+// scheme-relative URL 導去外部網域，所以這兩種開頭也要擋掉。
 function safeCallbackUrl(raw: string): string {
-  return raw.startsWith("/") ? raw : "/dashboard";
+  if (!raw.startsWith("/")) return "/dashboard";
+  if (raw.startsWith("//") || raw.startsWith("/\\")) return "/dashboard";
+  return raw;
 }
 
 /**
