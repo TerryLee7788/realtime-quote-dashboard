@@ -3,6 +3,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createUser, verifyUser, type AuthedUser } from "./users";
+import { getClientIp, isLoginRateLimited, recordFailedLoginAttempt } from "./rate-limit";
 import {
   createSessionToken,
   SESSION_COOKIE,
@@ -59,8 +60,17 @@ export async function loginAction(
     return { error: "請輸入帳號與密碼" };
   }
 
+  const ip = getClientIp();
+
+  // 限流檢查放在 verifyUser 之前，避免對已被判定為濫用的請求還要付一次 bcrypt 成本。
+  if (await isLoginRateLimited(username, ip)) {
+    await recordFailedLoginAttempt(username, ip); // 持續攻擊會不斷延長自己的鎖定視窗
+    return { error: "帳號或密碼錯誤" }; // 與帳密錯誤共用同一句訊息，不額外透露「被限流」
+  }
+
   const user = await verifyUser(username, password);
   if (!user) {
+    await recordFailedLoginAttempt(username, ip);
     return { error: "帳號或密碼錯誤" };
   }
 

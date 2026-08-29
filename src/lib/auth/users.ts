@@ -14,9 +14,14 @@ interface UserRow {
   password_hash: string;
 }
 
+// 單一 cost 常數，hash 真密碼與算 dummy hash 都用它，避免兩者手動同步時漏改
+// 其中一處，重新出現 cost 不一致造成的計時側信道。
+export const BCRYPT_COST = 12;
+
 // 一個永遠不會通過的 dummy hash，用來讓「帳號不存在」也花掉一次 compare 時間，
-// 降低透過回應時間差判斷帳號是否存在的側信道（timing attack）。
-const DUMMY_HASH = "$2a$10$CwTycUXWue0Thq9StjUM0uJ8.oF0aZ0X0aZ0X0aZ0X0aZ0X0aZ0X";
+// 降低透過回應時間差判斷帳號是否存在的側信道（timing attack）。用 hashSync 在
+// module 載入時現算，而不是手刻字串常數，以後調整 BCRYPT_COST 這裡會自動跟著變。
+const DUMMY_HASH = bcrypt.hashSync("dummy-password-for-timing-safety", BCRYPT_COST);
 
 const USERNAME_PATTERN = /^[a-zA-Z0-9_]{3,20}$/;
 
@@ -51,6 +56,17 @@ export async function verifyUser(
   const ok = await bcrypt.compare(password, user.password_hash);
   if (!ok) return null;
 
+  // 順手把 cost 低於目前設定值的舊雜湊升級——伺服器只有在登入成功這一刻拿得到
+  // 明碼密碼，這是唯一不強迫使用者重設密碼、又能把既有帳號雜湊強度拉到新 cost
+  // 的時機。失敗不該擋登入本身，吞掉即可。
+  const currentCost = Number(user.password_hash.split("$")[2]);
+  if (currentCost < BCRYPT_COST) {
+    const upgradedHash = await bcrypt.hash(password, BCRYPT_COST);
+    await query("UPDATE users SET password_hash = $1 WHERE id = $2", [upgradedHash, user.id]).catch(
+      () => undefined,
+    );
+  }
+
   return { id: String(user.id), username: user.username, name: user.name };
 }
 
@@ -75,7 +91,7 @@ export async function createUser(
 
   await ensureSchema();
 
-  const passwordHash = await bcrypt.hash(password, 10);
+  const passwordHash = await bcrypt.hash(password, BCRYPT_COST);
 
   try {
     const { rows } = await query<UserRow>(

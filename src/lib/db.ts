@@ -74,7 +74,22 @@ export async function query<T extends QueryResultRow = QueryResultRow>(
   text: string,
   params?: unknown[],
 ) {
-  return getPool().query<T>(text, params);
+  try {
+    return await getPool().query<T>(text, params);
+  } catch (err) {
+    // 42P01 = undefined_table。本機開發常見情境：DB 容器被 `docker compose down`
+    // 又 `up` 成一個全新、空的資料庫，但跑著的 Node process 沒有跟著重啟，
+    // schemaReady 還停留在「已經對著舊容器建過表」的記憶，導致之後每次查詢都
+    // 對著一個其實沒有 users/login_attempts 表的資料庫送查詢、永遠失敗。偵測到這個
+    // 錯誤碼就重置 schemaReady、重新跑一次建表 DDL，再重試這次查詢一次——只重試一次，
+    // 避免表真的不存在或其他原因造成無窮迴圈。
+    if ((err as { code?: string } | null)?.code === "42P01") {
+      schemaReady = null;
+      await ensureSchema();
+      return await getPool().query<T>(text, params);
+    }
+    throw err;
+  }
 }
 
 // 建表用的 DDL 只在第一次查詢前執行一次（同一個 lambda/伺服器程序內只跑一次），
@@ -92,6 +107,30 @@ export function ensureSchema(): Promise<void> {
            password_hash TEXT NOT NULL,
            created_at TIMESTAMPTZ NOT NULL DEFAULT now()
          )`,
+      )
+      // 登入失敗嘗試紀錄，供 rate-limit.ts 做滑動視窗限流查詢用。
+      // 獨立成一張新表、不對 users 加外鍵，避免動到 users 既有的手動客製設定。
+      .then(() =>
+        getPool().query(
+          `CREATE TABLE IF NOT EXISTS login_attempts (
+             id BIGSERIAL PRIMARY KEY,
+             username TEXT NOT NULL,
+             ip TEXT NOT NULL,
+             created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+           )`,
+        ),
+      )
+      .then(() =>
+        getPool().query(
+          `CREATE INDEX IF NOT EXISTS login_attempts_username_created_at_idx
+             ON login_attempts (username, created_at)`,
+        ),
+      )
+      .then(() =>
+        getPool().query(
+          `CREATE INDEX IF NOT EXISTS login_attempts_ip_created_at_idx
+             ON login_attempts (ip, created_at)`,
+        ),
       )
       .then(() => undefined)
       .catch((err) => {
