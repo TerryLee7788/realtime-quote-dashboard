@@ -96,9 +96,13 @@ export async function createUser(
   try {
     const { rows } = await query<UserRow>(
       `INSERT INTO users (username, name, password_hash)
-       VALUES ($1, $1, $2)
+       VALUES ($1, $2, $3)
        RETURNING id, username, name, password_hash`,
-      [normalized, passwordHash],
+      // username 用同一個 $1 餵給 username 跟 name 兩欄會炸：正式環境的 username 欄位
+      // 已經手動轉成 citext，跟 name 欄位的 text 型別不一致，Postgres 沒辦法幫同一個
+      // 參數推導出單一型別（42P08 / "citext versus text"）。改成各自獨立的參數位置，
+      // 值一樣是 normalized，但型別推導不再打架。
+      [normalized, normalized, passwordHash],
     );
     const user = rows[0];
     return { ok: true, user: { id: String(user.id), username: user.username, name: user.name } };
