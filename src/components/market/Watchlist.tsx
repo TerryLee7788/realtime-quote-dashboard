@@ -15,6 +15,7 @@ export const SYMBOLS = [
   "DOGEUSDT",
   "ADAUSDT",
   "AVAXUSDT",
+  "SUIUSDT",
 ];
 
 interface Row {
