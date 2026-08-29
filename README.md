@@ -161,7 +161,8 @@ DATABASE_URL=postgres://postgres:postgres@localhost:55432/postgres
    | `AUTH_SECRET` | 一組夠長的隨機字串（例如 `openssl rand -base64 32` 的輸出） |
    | `DATABASE_URL` | 你的 Postgres 連線字串（Neon / Supabase / Railway / 自架皆可，需支援 `sslmode=require`） |
 
-   三個環境（Production / Preview / Development）都建議設定。
+   建議 Production 用一組正式的 Postgres（Neon/Supabase/Railway…）；Preview 另外接一組**獨立**的
+   資料庫（見下方「Branch 策略與 Preview 測試」），不要跟 Production 共用同一組 `DATABASE_URL`。
 
 5. **Deploy**。完成後到 `/register` 用任意 username/password 建立帳號即可登入看效果。
 
@@ -169,6 +170,25 @@ DATABASE_URL=postgres://postgres:postgres@localhost:55432/postgres
 > `vercel env add DATABASE_URL`。
 
 > Postgres 完全獨立於 Vercel 之外，換供應商只需要換 `DATABASE_URL`，不會被特定平台綁定。
+
+---
+
+## Branch 策略與 Preview 測試
+
+`main` 是 GitHub 的預設 branch，也是 Vercel **Production Branch Tracking** 指向的 branch——合併進
+`main` 就會直接部署到 `realtime-quote-dashboard.vercel.app`，接的是正式的 Postgres。**不要直接
+push 到 `main`**，正常流程：
+
+1. 從 `main` 開一個 feature branch：`git checkout -b feat/xxx`（或 `fix/`、`chore/`）。
+2. Push 上去，Vercel 會自動開一個獨立的 **Preview** 部署網址（開 PR 後會顯示在 PR 的 check 裡）。
+   Preview 接的是另一組**獨立的 Neon Postgres**（透過 Vercel Marketplace 佈建，Preview-only 的
+   `DATABASE_URL`/`AUTH_SECRET`，跟 Production 的資料庫完全分開）——在 Preview 上測註冊、登入、
+   rate limiting 都不會碰到正式站的真實使用者資料。
+3. 在 Preview 網址上實際測過一輪，確認沒問題。
+4. 開 PR 合併進 `main`，才會觸發正式環境部署。
+
+`main` 目前沒有設定 branch protection rules，技術上仍可以 force push，有需要的話可以去 GitHub
+repo 的 Settings → Branches 加。
 
 ---
 

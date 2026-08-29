@@ -31,6 +31,25 @@ work) must be set for register/login to work; `src/lib/db.ts` throws immediately
 There are no demo accounts anymore — anyone can create an account at `/register` with any
 username/password.
 
+## Git workflow
+
+`main` is both GitHub's default branch and Vercel's Production Branch Tracking target — anything
+merged into `main` deploys straight to `realtime-quote-dashboard.vercel.app` with the **real**
+Supabase `DATABASE_URL`. Never push directly to `main` for anything non-trivial.
+
+1. Branch off `main` for any change: `git checkout -b feat/<short-name>` (or `fix/`, `chore/`, …).
+2. Push it. Vercel auto-creates an isolated **Preview** deployment for the branch — its own URL,
+   posted as a PR check/comment once a PR is opened. Preview runs against a **separate Neon
+   Postgres** (Marketplace integration, Preview-only `DATABASE_URL`/`AUTH_SECRET`) — completely
+   isolated from the Supabase database backing Production, so testing on Preview (registering
+   accounts, exercising rate limiting, etc.) can never touch real user data. `ensureSchema()`
+   auto-creates tables on Preview's empty Neon DB on first request, same as any fresh Postgres.
+3. Test the change on its Preview URL before merging.
+4. Open a PR into `main`. Merging triggers the Production deploy.
+
+No branch protection rules are configured on `main` yet (`git push --force` would be accepted) —
+add them in GitHub repo settings if that becomes a concern.
+
 ## Architecture
 
 **The core design constraint**: Vercel Serverless/Edge Functions can't hold long-lived
