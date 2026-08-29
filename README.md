@@ -98,8 +98,8 @@ npm install
 #    - Neon      https://neon.tech        （免費方案，最快）
 #    - Supabase  https://supabase.com
 #    - Railway   https://railway.app
-#    - 本機 Docker：
-#      docker run -d --name quote-db -e POSTGRES_PASSWORD=postgres -p 5432:5432 postgres
+#    - 本機 Docker（見下方「本機 Postgres（Docker）」一節）：
+#      docker compose up -d
 
 # 3. 設定環境變數
 cp .env.example .env.local
@@ -107,7 +107,7 @@ cp .env.example .env.local
 #   - AUTH_SECRET   換成一組隨機字串：
 #     node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 #   - DATABASE_URL  填入上一步拿到的 Postgres 連線字串
-#     （本機 Docker 範例：postgres://postgres:postgres@localhost:5432/postgres）
+#     （本機 Docker 範例：postgres://postgres:postgres@localhost:55432/postgres）
 
 # 4. 啟動
 npm run dev
@@ -116,6 +116,36 @@ npm run dev
 
 資料表會在第一次註冊 / 登入請求時自動建立（見 `src/lib/db.ts` 的 `ensureSchema()`），不需要額外
 跑 migration 工具。啟動後到 `/register` 用任意 username/password 建立帳號即可登入。
+
+### 本機 Postgres（Docker）
+
+不想申請雲端 Postgres 帳號，或想要一個跟正式環境（Neon/Supabase/…）完全分開、可以隨意重建的本機
+資料庫時，用專案內附的 `docker-compose.yml`：
+
+```bash
+# 啟動（背景執行，資料存在 named volume，重開機不會不見）
+docker compose up -d
+
+# 查看狀態 / log
+docker compose ps
+docker compose logs -f postgres
+
+# 停止（資料還在，volume 沒刪）
+docker compose stop
+
+# 完全砍掉重練（連資料一起清空，開發時想要一個乾淨的 DB 才用這個）
+docker compose down -v
+```
+
+對應的 `.env.local`：
+
+```
+DATABASE_URL=postgres://postgres:postgres@localhost:55432/postgres
+```
+
+用 `55432` 而不是 Postgres 預設的 `5432`，是為了避免跟本機可能已經另外裝著的 Postgres（例如系統
+內建的 Postgres 服務）搶 port。這組容器只給本機開發用，帳密是明碼寫在 `docker-compose.yml` 裡的
+`postgres`/`postgres`，僅供本機測試用途，**不要**在雲端環境用這組憑證。
 
 ---
 

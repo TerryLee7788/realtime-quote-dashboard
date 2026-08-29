@@ -1,0 +1,17 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: quote-dashboard-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    # 對外用 55432，避免跟本機可能已經在跑的其他 Postgres（預設 5432）搶 port。
+    ports:
+      - "55432:5432"
+    volumes:
+      - quote-dashboard-db-data:/var/lib/postgresql/data
+
+volumes:
+  quote-dashboard-db-data:
