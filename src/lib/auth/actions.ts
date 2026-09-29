@@ -2,7 +2,7 @@
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { createUser, verifyUser, type AuthedUser } from "./users";
+import { createUser, verifyUser, type AuthedUser, type CreateUserResult } from "./users";
 import { getClientIp, isLoginRateLimited, recordFailedLoginAttempt } from "./rate-limit";
 import {
   createSessionToken,
@@ -34,6 +34,16 @@ async function startSession(user: AuthedUser): Promise<void> {
   });
 }
 
+// 資料庫連不上（DATABASE_URL 失效、DB 被暫停/刪除、網路問題…）時，不要讓例外一路
+// 冒到 Next 變成整頁 500，而是回傳一句通用訊息給表單顯示。完整錯誤只寫到 server log
+// （Vercel Runtime Logs 查得到），不回傳給前端，避免洩漏連線字串或內部細節。
+const SERVICE_UNAVAILABLE = "服務暫時無法使用，請稍後再試";
+
+function handleDbError(action: string, err: unknown): { error: string } {
+  console.error(`[${action}] 資料庫錯誤：`, err);
+  return { error: SERVICE_UNAVAILABLE };
+}
+
 // 只允許站內相對路徑，避免 open redirect。
 // 光檢查開頭是 "/" 不夠：瀏覽器會把 "//evil.com" 或 "/\evil.com" 當成
 // scheme-relative URL 導去外部網域，所以這兩種開頭也要擋掉。
@@ -62,18 +72,25 @@ export async function loginAction(
 
   const ip = getClientIp();
 
-  // 限流檢查放在 verifyUser 之前，避免對已被判定為濫用的請求還要付一次 bcrypt 成本。
-  if (await isLoginRateLimited(username, ip)) {
-    await recordFailedLoginAttempt(username, ip); // 持續攻擊會不斷延長自己的鎖定視窗
-    return { error: "帳號或密碼錯誤" }; // 與帳密錯誤共用同一句訊息，不額外透露「被限流」
+  let user: AuthedUser | null;
+  try {
+    // 限流檢查放在 verifyUser 之前，避免對已被判定為濫用的請求還要付一次 bcrypt 成本。
+    if (await isLoginRateLimited(username, ip)) {
+      await recordFailedLoginAttempt(username, ip); // 持續攻擊會不斷延長自己的鎖定視窗
+      return { error: "帳號或密碼錯誤" }; // 與帳密錯誤共用同一句訊息，不額外透露「被限流」
+    }
+
+    user = await verifyUser(username, password);
+    if (!user) {
+      await recordFailedLoginAttempt(username, ip);
+      return { error: "帳號或密碼錯誤" };
+    }
+  } catch (err) {
+    return handleDbError("loginAction", err);
   }
 
-  const user = await verifyUser(username, password);
-  if (!user) {
-    await recordFailedLoginAttempt(username, ip);
-    return { error: "帳號或密碼錯誤" };
-  }
-
+  // startSession/redirect 刻意放在 try 外面：redirect() 是靠 throw 來運作的，
+  // 被上面的 catch 吃掉就不會跳轉了。
   await startSession(user);
   redirect(safeCallbackUrl(rawCallback));
 }
@@ -98,7 +115,12 @@ export async function registerAction(
     return { error: "兩次輸入的密碼不一致" };
   }
 
-  const result = await createUser(username, password);
+  let result: CreateUserResult;
+  try {
+    result = await createUser(username, password);
+  } catch (err) {
+    return handleDbError("registerAction", err);
+  }
   if (!result.ok || !result.user) {
     return { error: result.error ?? "註冊失敗，請稍後再試" };
   }
